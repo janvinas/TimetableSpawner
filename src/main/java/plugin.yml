@@ -1,0 +1,14 @@
+name: TimetableSpawner
+version: 1.0-SNAPSHOT
+author: janitus1234
+description: TimetableSpawner plugin for traincarts
+main: io.github.janvinas.timetablespawner.TimetableSpawner
+api-version: 1.13
+depend: [Train_Carts]
+commands:
+  timetablespawner:
+    description: TimetableSpawner main command
+    usage: /timetablespawner <command>
+    aliases: ts
+    permission: timetablespawner.use
+    permission-message: You need the timetablespawner.use permission to use this command.
