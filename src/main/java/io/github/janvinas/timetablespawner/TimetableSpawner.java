@@ -13,7 +13,7 @@ public class TimetableSpawner extends JavaPlugin {
 
     @Override
     public void onEnable() {
-
+        getServer().getConsoleSender().sendMessage("TimetableSpawner enabled!");
     }
 
     @Override
@@ -32,7 +32,15 @@ public class TimetableSpawner extends JavaPlugin {
                 spawner.spawn();
                 return true;
             }
+        }else if(command.getName().equalsIgnoreCase("timetablespawner") && args.length == 2){
+            if(args[0].equalsIgnoreCase("schedule")){
+                if (Integer.parseInt(args [1]) > 0) {
+                    int ticks = Integer.parseInt(args[1]);
+                    getServer().getScheduler().runTaskLater(this, () -> spawner.spawn(), ticks);
+                }
+            }
         }
         return false;
     }
+
 }
