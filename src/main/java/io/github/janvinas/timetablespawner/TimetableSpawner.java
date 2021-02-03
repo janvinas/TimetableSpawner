@@ -1,6 +1,12 @@
 package io.github.janvinas.timetablespawner;
 
+import com.bergerkiller.bukkit.tc.controller.MinecartGroup;
+import com.bergerkiller.bukkit.tc.controller.MinecartGroupStore;
 import com.bergerkiller.bukkit.tc.properties.CartProperties;
+import com.sun.net.httpserver.HttpContext;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
@@ -9,14 +15,28 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import com.bergerkiller.bukkit.tc.signactions.spawner.SpawnSign;
 import com.bergerkiller.bukkit.common.BlockLocation;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.util.Set;
 
 
 public class TimetableSpawner extends JavaPlugin {
 
     @Override
-    public void onEnable() {
+    public void onEnable (){
         getServer().getConsoleSender().sendMessage("TimetableSpawner enabled!");
+
+        try {
+            HttpServer server = HttpServer.create(new InetSocketAddress(8176), 0);
+            server.createContext("/gettrains", new RequestHandler());
+            server.setExecutor(null); // creates a default executor
+            server.start();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -55,6 +75,8 @@ public class TimetableSpawner extends JavaPlugin {
                     }
                 }
                 return true;
+            }else if(args.length == 1 && args[0].equalsIgnoreCase("trainlist")){
+                sender.sendMessage(getTrains());
             }
         }
         return false;
@@ -69,5 +91,31 @@ public class TimetableSpawner extends JavaPlugin {
         }
         sender.sendMessage(tag);        //send the last part of the string
     }
+
+    static class RequestHandler implements HttpHandler {
+        public void handle(HttpExchange t) throws IOException {
+            byte [] response = getTrains().getBytes();
+            t.sendResponseHeaders(200, response.length);
+            OutputStream os = t.getResponseBody();
+            os.write(response);
+            os.close();
+        }
+    }
+
+    private static String getTrains(){
+        String trains = "{";
+        for(MinecartGroup group : MinecartGroupStore.getGroups()){
+            String trainName = group.getProperties().getDisplayName();
+            String coordX = String.valueOf(group.get(0).getBlock().getLocation().getX());
+            String coordY = String.valueOf(group.get(0).getBlock().getLocation().getY());
+            String coordZ = String.valueOf(group.get(0).getBlock().getLocation().getZ());
+            String coords = coordX + "," + coordY + "," + coordZ;
+            trains = trains.concat("\"" + trainName + "\": \"" + coords + "\",");
+        }
+        if(trains.length() > 10) trains = trains.substring(0, trains.length() - 1);
+        trains = trains.concat("}");
+        return trains;
+    }
+
 }
 
