@@ -3,7 +3,6 @@ package io.github.janvinas.timetablespawner;
 import com.bergerkiller.bukkit.tc.controller.MinecartGroup;
 import com.bergerkiller.bukkit.tc.controller.MinecartGroupStore;
 import com.bergerkiller.bukkit.tc.properties.CartProperties;
-import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -11,18 +10,21 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Minecart;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import com.bergerkiller.bukkit.tc.signactions.spawner.SpawnSign;
 import com.bergerkiller.bukkit.common.BlockLocation;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.util.Collection;
 import java.util.Set;
 
 
 public class TimetableSpawner extends JavaPlugin {
+
+    MinecartGroup[] trainList = new MinecartGroup[]{};
 
     @Override
     public void onEnable (){
@@ -37,6 +39,21 @@ public class TimetableSpawner extends JavaPlugin {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        getServer().getScheduler().scheduleSyncRepeatingTask(this,() ->{
+            for(MinecartGroup train : trainList){
+                Collection<MinecartGroup> trainMatches = MinecartGroupStore.matchAll(train.getProperties().getTrainName());
+                for(MinecartGroup matchingTrain : trainMatches){
+                    if(train.isMoving() && train.get(0).getBlock() == matchingTrain.get(0).getBlock()){
+                        matchingTrain.destroy();
+                        BlockLocation loc = matchingTrain.getProperties().getLocation();
+                        getServer().getConsoleSender().sendMessage("Train on " + loc.x + "," + loc.y + "," + loc.z + " has been removed because it hasn't moved in 2 minutes");
+                    }
+                }
+            }
+
+            trainList = MinecartGroupStore.getGroups().toArray(new MinecartGroup[0]);
+        } , 0, 2400);
     }
 
     @Override
@@ -95,6 +112,7 @@ public class TimetableSpawner extends JavaPlugin {
     static class RequestHandler implements HttpHandler {
         public void handle(HttpExchange t) throws IOException {
             byte [] response = getTrains().getBytes();
+            t.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
             t.sendResponseHeaders(200, response.length);
             OutputStream os = t.getResponseBody();
             os.write(response);
@@ -105,11 +123,12 @@ public class TimetableSpawner extends JavaPlugin {
     private static String getTrains(){
         String trains = "{";
         for(MinecartGroup group : MinecartGroupStore.getGroups()){
-            String trainName = group.getProperties().getDisplayName();
+            String trainName = group.getProperties().getTrainName();
+            String trainWorld = group.getWorld().getName();
             String coordX = String.valueOf(group.get(0).getBlock().getLocation().getX());
             String coordY = String.valueOf(group.get(0).getBlock().getLocation().getY());
             String coordZ = String.valueOf(group.get(0).getBlock().getLocation().getZ());
-            String coords = coordX + "," + coordY + "," + coordZ;
+            String coords = trainWorld + ":" + coordX + "," + coordY + "," + coordZ;
             trains = trains.concat("\"" + trainName + "\": \"" + coords + "\",");
         }
         if(trains.length() > 10) trains = trains.substring(0, trains.length() - 1);
