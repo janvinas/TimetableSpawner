@@ -10,7 +10,6 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Minecart;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import com.bergerkiller.bukkit.tc.signactions.spawner.SpawnSign;
@@ -20,6 +19,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.Set;
+import java.util.logging.Logger;
 
 
 public class TimetableSpawner extends JavaPlugin {
@@ -29,6 +29,8 @@ public class TimetableSpawner extends JavaPlugin {
     @Override
     public void onEnable (){
         getServer().getConsoleSender().sendMessage("TimetableSpawner enabled!");
+        this.saveDefaultConfig();
+        int trainDestroyDelay = this.getConfig().getInt("destroy-trains");
 
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress(8176), 0);
@@ -40,20 +42,24 @@ public class TimetableSpawner extends JavaPlugin {
             e.printStackTrace();
         }
 
-        getServer().getScheduler().scheduleSyncRepeatingTask(this,() ->{
-            for(MinecartGroup train : trainList){
-                Collection<MinecartGroup> trainMatches = MinecartGroupStore.matchAll(train.getProperties().getTrainName());
-                for(MinecartGroup matchingTrain : trainMatches){
-                    if(train.isMoving() && train.get(0).getBlock() == matchingTrain.get(0).getBlock()){
-                        matchingTrain.destroy();
-                        BlockLocation loc = matchingTrain.getProperties().getLocation();
-                        getServer().getConsoleSender().sendMessage("Train on " + loc.x + "," + loc.y + "," + loc.z + " has been removed because it hasn't moved in 2 minutes");
+        if(trainDestroyDelay != 0){
+            getServer().getScheduler().scheduleSyncRepeatingTask(this,() ->{
+                for(MinecartGroup train : trainList){
+                    Collection<MinecartGroup> trainMatches = MinecartGroupStore.matchAll(train.getProperties().getTrainName());
+                    for(MinecartGroup matchingTrain : trainMatches){
+                        if( (!matchingTrain.isUnloaded()) && (train.get(0).getBlock().equals(matchingTrain.get(0).getBlock())) ){
+
+                            BlockLocation loc = matchingTrain.getProperties().getLocation();
+                            matchingTrain.destroy();
+                            getLogger().info("Train on " + loc.x + "," + loc.y + "," + loc.z + " has been destroyed");
+                        }
                     }
                 }
-            }
 
-            trainList = MinecartGroupStore.getGroups().toArray(new MinecartGroup[0]);
-        } , 0, 2400);
+                trainList = MinecartGroupStore.getGroups().toArray(new MinecartGroup[0]);
+            } , 0, trainDestroyDelay);
+        }
+
     }
 
     @Override

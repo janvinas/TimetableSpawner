@@ -1,0 +1,6 @@
+############################################
+# TimetableSpawner main configuration file #
+############################################
+
+#ticks needed to destroy inactive trains. Set it to 0 to turn this feature off.
+destroy-trains: 0
