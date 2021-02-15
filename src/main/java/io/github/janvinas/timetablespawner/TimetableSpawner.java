@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -18,13 +19,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Set;
-import java.util.logging.Logger;
 
 
 public class TimetableSpawner extends JavaPlugin {
 
-    MinecartGroup[] trainList = new MinecartGroup[]{};
+    HashMap<String, Block> trainList= new HashMap<>();
 
     @Override
     public void onEnable (){
@@ -44,19 +45,23 @@ public class TimetableSpawner extends JavaPlugin {
 
         if(trainDestroyDelay != 0){
             getServer().getScheduler().scheduleSyncRepeatingTask(this,() ->{
-                for(MinecartGroup train : trainList){
-                    Collection<MinecartGroup> trainMatches = MinecartGroupStore.matchAll(train.getProperties().getTrainName());
+                for(String train : trainList.keySet()){
+                    Collection<MinecartGroup> trainMatches = MinecartGroupStore.matchAll(train);
                     for(MinecartGroup matchingTrain : trainMatches){
-                        if( (!matchingTrain.isUnloaded()) && (train.get(0).getBlock().equals(matchingTrain.get(0).getBlock())) ){
+                        if( (!matchingTrain.isUnloaded()) && (trainList.get(train).equals(matchingTrain.get(0).getBlock())) ){
 
                             BlockLocation loc = matchingTrain.getProperties().getLocation();
                             matchingTrain.destroy();
-                            getLogger().info("Train on " + loc.x + "," + loc.y + "," + loc.z + " has been destroyed");
+                            getLogger().info("Train " + train + " at " + loc.x + "," + loc.y + "," + loc.z + " has been destroyed");
                         }
                     }
                 }
 
-                trainList = MinecartGroupStore.getGroups().toArray(new MinecartGroup[0]);
+                trainList.clear();
+                for(MinecartGroup train : MinecartGroupStore.getGroups()){
+                    trainList.put(train.getProperties().getTrainName(), train.get(0).getBlock());
+                }
+
             } , 0, trainDestroyDelay);
         }
 
