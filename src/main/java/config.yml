@@ -4,3 +4,10 @@
 
 #ticks needed to destroy inactive trains. Set it to 0 to turn this feature off.
 destroy-trains: 0
+
+departure-boards:
+  test1:
+    - R1-30 0/5 * * * *
+    - R2-0/10 * * * *
+  test2:
+    - R1-56 1/5 * * * *
