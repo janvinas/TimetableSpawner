@@ -1,31 +1,25 @@
 package io.github.janvinas.timetablespawner;
 
-import com.bergerkiller.bukkit.common.map.MapColorPalette;
-import com.bergerkiller.bukkit.common.map.MapDisplay;
-import com.bergerkiller.bukkit.common.map.MapFont;
+import com.bergerkiller.bukkit.common.BlockLocation;
 import com.bergerkiller.bukkit.sl.API.Variables;
 import com.bergerkiller.bukkit.tc.controller.MinecartGroup;
 import com.bergerkiller.bukkit.tc.controller.MinecartGroupStore;
 import com.bergerkiller.bukkit.tc.properties.CartProperties;
+import com.bergerkiller.bukkit.tc.signactions.spawner.SpawnSign;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import net.intelie.omnicron.Cron;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
-import com.bergerkiller.bukkit.tc.signactions.spawner.SpawnSign;
-import com.bergerkiller.bukkit.common.BlockLocation;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -34,15 +28,15 @@ import java.util.*;
 public class TimetableSpawner extends JavaPlugin {
 
     HashMap<String, Block> trainList = new HashMap<>();
-    MapDisplay mapDisplay;
     HashMap<String, List<String>> departureBoards = new HashMap<>();
     int boardLength = 3;
+    int trainDestroyDelay;
 
     @Override
     public void onEnable (){
         getServer().getConsoleSender().sendMessage("TimetableSpawner enabled!");
         this.saveDefaultConfig();
-        int trainDestroyDelay = this.getConfig().getInt("destroy-trains");
+        trainDestroyDelay = this.getConfig().getInt("destroy-trains");
         
         for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
             departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
@@ -80,21 +74,27 @@ public class TimetableSpawner extends JavaPlugin {
         }
 
         getServer().getScheduler().scheduleSyncRepeatingTask(this, () -> {
-            TreeMap<LocalDateTime, String> departureBoardTrains = new TreeMap<>();
+            TreeMap<LocalDateTime, TrainInformation> departureBoardTrains = new TreeMap<>();
             LocalDateTime now = LocalDateTime.now();
+
             for(String boardName : departureBoards.keySet()){
                 departureBoardTrains.clear();
                 for(String trainLine : departureBoards.get(boardName)){
-                    StringTokenizer stringTokenizer = new StringTokenizer(trainLine, "-");
-                    String trainLineName = stringTokenizer.nextToken();
-                    String trainLineCronExpression = stringTokenizer.nextToken();
-                    Cron cron = new Cron(trainLineCronExpression);
+                    StringTokenizer tokenizer = new StringTokenizer(trainLine, "|");
+                    TrainInformation trainInformation = new TrainInformation();
 
+                    trainInformation.name = tokenizer.nextToken();
+                    trainInformation.time = tokenizer.nextToken();
+                    if(tokenizer.hasMoreTokens()) trainInformation.destination = tokenizer.nextToken();
+                    if(tokenizer.hasMoreTokens()) trainInformation.platform = tokenizer.nextToken();
+                    if(tokenizer.hasMoreTokens()) trainInformation.information = tokenizer.nextToken();
+                    Cron cron = new Cron(trainInformation.time);
                     LocalDateTime input = now;
+
                     //put enough trains of every train line so the board will never be empty
                     for (int i = 0; i < boardLength; i++) {
                         input = cron.next(input);
-                        departureBoardTrains.put(input, trainLineName);
+                        departureBoardTrains.put(input, trainInformation);
                     }
                 }
 
@@ -104,7 +104,13 @@ public class TimetableSpawner extends JavaPlugin {
                     if(j < boardLength){
                         //format is: "board1N" (train name) and "board1T" (departure time)
                         Variables.get(boardName + "-" + j + "T").set(departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
-                        Variables.get(boardName + "-" + j + "N").set(departureBoardTrains.get(departureTime));
+                        Variables.get(boardName + "-" + j + "N").set(departureBoardTrains.get(departureTime).name);
+                        String destination = departureBoardTrains.get(departureTime).destination;
+                        if(!destination.equals("_")) Variables.get(boardName + "-" + j + "D").set(destination);
+                        String platform = departureBoardTrains.get(departureTime).platform;
+                        if(!platform.equals("_")) Variables.get(boardName + "-" + j + "P").set(platform);
+                        String information = departureBoardTrains.get(departureTime).platform;
+                        if(!platform.equals("_")) Variables.get(boardName + "-" + j + "I").set(information);
                     }
                     j++;
                 }
@@ -142,8 +148,16 @@ public class TimetableSpawner extends JavaPlugin {
                 return true;
             }else if(args.length == 1 && args[0].equalsIgnoreCase("trainlist")){
                 sender.sendMessage(getTrains());
+                return true;
             }else if(args.length == 1 && args[0].equalsIgnoreCase("boardlist")){
                 sender.sendMessage(departureBoards.toString());
+                return true;
+            }else if(args.length == 1  && args[0].equalsIgnoreCase("reload")){
+                trainDestroyDelay = this.getConfig().getInt("destroy-trains");
+                for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
+                    departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
+                }
+                return true;
             }
         }
         return false;

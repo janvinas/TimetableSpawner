@@ -7,7 +7,7 @@ destroy-trains: 0
 
 departure-boards:
   test1:
-    - R1-30 0/5 * * * *
-    - R2-0/10 * * * *
+    - R1|30 0/5 * * * *|City Hall|3|_
+    - R2|0/10 * * * *
   test2:
-    - R1-56 1/5 * * * *
+    - R1|56 1/5 * * * *
