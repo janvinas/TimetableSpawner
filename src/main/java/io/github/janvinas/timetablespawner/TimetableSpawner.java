@@ -20,6 +20,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -29,7 +30,6 @@ public class TimetableSpawner extends JavaPlugin {
 
     HashMap<String, Block> trainList = new HashMap<>();
     HashMap<String, List<String>> departureBoards = new HashMap<>();
-    int boardLength = 3;
     int trainDestroyDelay;
 
     @Override
@@ -78,16 +78,20 @@ public class TimetableSpawner extends JavaPlugin {
             LocalDateTime now = LocalDateTime.now();
 
             for(String boardName : departureBoards.keySet()){
+                StringTokenizer boardNameTokenizer = new StringTokenizer(boardName, "|");
+                String parsedBoardName = boardNameTokenizer.nextToken();
+                int boardLength = Integer.parseInt(boardNameTokenizer.nextToken());
+
                 departureBoardTrains.clear();
                 for(String trainLine : departureBoards.get(boardName)){
-                    StringTokenizer tokenizer = new StringTokenizer(trainLine, "|");
+                    StringTokenizer lineTokenizer = new StringTokenizer(trainLine, "|");
                     TrainInformation trainInformation = new TrainInformation();
 
-                    trainInformation.name = tokenizer.nextToken();
-                    trainInformation.time = tokenizer.nextToken();
-                    if(tokenizer.hasMoreTokens()) trainInformation.destination = tokenizer.nextToken();
-                    if(tokenizer.hasMoreTokens()) trainInformation.platform = tokenizer.nextToken();
-                    if(tokenizer.hasMoreTokens()) trainInformation.information = tokenizer.nextToken();
+                    trainInformation.name = lineTokenizer.nextToken();
+                    trainInformation.time = lineTokenizer.nextToken();
+                    if(lineTokenizer.hasMoreTokens()) trainInformation.destination = lineTokenizer.nextToken();
+                    if(lineTokenizer.hasMoreTokens()) trainInformation.platform = lineTokenizer.nextToken();
+                    if(lineTokenizer.hasMoreTokens()) trainInformation.information = lineTokenizer.nextToken();
                     Cron cron = new Cron(trainInformation.time);
                     LocalDateTime input = now;
 
@@ -102,15 +106,24 @@ public class TimetableSpawner extends JavaPlugin {
                 int j = 0;
                 for(LocalDateTime departureTime : departureBoardTrains.keySet()){
                     if(j < boardLength){
-                        //format is: "board1N" (train name) and "board1T" (departure time)
-                        Variables.get(boardName + "-" + j + "T").set(departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
-                        Variables.get(boardName + "-" + j + "N").set(departureBoardTrains.get(departureTime).name);
+                        //format is: "board-0N" (train name)
+                        Duration untilDeparture = Duration.between(now, departureTime);
+                        if(untilDeparture.minusSeconds(30).isNegative()){
+                            Variables.get(parsedBoardName + "-" + j + "T").set("now");
+                        }else if(untilDeparture.minusMinutes(5).isNegative()){
+                            Variables.get(parsedBoardName + "-" + j + "T").set(
+                                    departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " (" +
+                                            (int) untilDeparture.getSeconds() / 60 + "min)");
+                        }else{
+                            Variables.get(parsedBoardName + "-" + j + "T").set(departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
+                        }
+                        Variables.get(parsedBoardName + "-" + j + "N").set(departureBoardTrains.get(departureTime).name);
                         String destination = departureBoardTrains.get(departureTime).destination;
-                        if(!destination.equals("_")) Variables.get(boardName + "-" + j + "D").set(destination);
+                        if(!destination.equals("_")) Variables.get(parsedBoardName + "-" + j + "D").set(destination);
                         String platform = departureBoardTrains.get(departureTime).platform;
-                        if(!platform.equals("_")) Variables.get(boardName + "-" + j + "P").set(platform);
-                        String information = departureBoardTrains.get(departureTime).platform;
-                        if(!platform.equals("_")) Variables.get(boardName + "-" + j + "I").set(information);
+                        if(!platform.equals("_")) Variables.get(parsedBoardName + "-" + j + "P").set(platform);
+                        String information = departureBoardTrains.get(departureTime).information;
+                        if(!platform.equals("_")) Variables.get(parsedBoardName + "-" + j + "I").set(information);
                     }
                     j++;
                 }
@@ -154,6 +167,7 @@ public class TimetableSpawner extends JavaPlugin {
                 return true;
             }else if(args.length == 1  && args[0].equalsIgnoreCase("reload")){
                 trainDestroyDelay = this.getConfig().getInt("destroy-trains");
+                reloadConfig();
                 for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
                     departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
                 }
