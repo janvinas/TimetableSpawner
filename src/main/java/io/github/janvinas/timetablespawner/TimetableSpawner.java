@@ -31,12 +31,16 @@ public class TimetableSpawner extends JavaPlugin {
     HashMap<String, Block> trainList = new HashMap<>();
     HashMap<String, List<String>> departureBoards = new HashMap<>();
     int trainDestroyDelay;
+    int secondsToDisplayOnBoard = 20;
+    String dontDestroyTag;
 
     @Override
     public void onEnable (){
         getServer().getConsoleSender().sendMessage("TimetableSpawner enabled!");
         this.saveDefaultConfig();
-        trainDestroyDelay = this.getConfig().getInt("destroy-trains");
+        trainDestroyDelay = getConfig().getInt("destroy-trains");
+        secondsToDisplayOnBoard = getConfig().getInt("seconds-to-display-on-board");
+        dontDestroyTag = getConfig().getString("dont-destroy-tag");
         
         for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
             departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
@@ -59,9 +63,11 @@ public class TimetableSpawner extends JavaPlugin {
                     for(MinecartGroup matchingTrain : trainMatches){
                         if( (!matchingTrain.isUnloaded()) && (trainList.get(train).equals(matchingTrain.get(0).getBlock())) ){
 
-                            BlockLocation loc = matchingTrain.getProperties().getLocation();
-                            matchingTrain.destroy();
-                            getLogger().info("Train " + train + " at " + loc.x + "," + loc.y + "," + loc.z + " has been destroyed");
+                            if(!matchingTrain.getProperties().matchTag(dontDestroyTag)){
+                                BlockLocation loc = matchingTrain.getProperties().getLocation();
+                                matchingTrain.destroy();
+                                getLogger().info("Train " + train + " at " + loc.x + "," + loc.y + "," + loc.z + " has been destroyed");
+                            }
                         }
                     }
                 }
@@ -108,7 +114,7 @@ public class TimetableSpawner extends JavaPlugin {
                     if(j < boardLength){
                         //format is: "board-0N" (train name)
                         Duration untilDeparture = Duration.between(now, departureTime);
-                        if(untilDeparture.minusSeconds(30).isNegative()){
+                        if(untilDeparture.minusSeconds(secondsToDisplayOnBoard).isNegative()){
                             Variables.get(parsedBoardName + "-" + j + "T").set("now");
                         }else if(untilDeparture.minusMinutes(5).isNegative()){
                             Variables.get(parsedBoardName + "-" + j + "T").set(
@@ -154,7 +160,7 @@ public class TimetableSpawner extends JavaPlugin {
             }else if(args.length == 1 && args[0].equalsIgnoreCase("info")){
                 Set<String> tags = CartProperties.getEditing((Player) sender).getTags();
                 for (String tag : tags){
-                    if(tag.startsWith("ts_")){
+                    if(tag.startsWith("ts|")){
                         sendInformation(tag, sender);
                     }
                 }
@@ -166,8 +172,9 @@ public class TimetableSpawner extends JavaPlugin {
                 sender.sendMessage(departureBoards.toString());
                 return true;
             }else if(args.length == 1  && args[0].equalsIgnoreCase("reload")){
-                trainDestroyDelay = this.getConfig().getInt("destroy-trains");
                 reloadConfig();
+                trainDestroyDelay = getConfig().getInt("destroy-trains");
+                dontDestroyTag = getConfig().getString("dont-destroy-tag");
                 for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
                     departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
                 }
@@ -178,13 +185,13 @@ public class TimetableSpawner extends JavaPlugin {
     }
 
     void sendInformation(String tag, CommandSender sender){
-        sender.sendMessage(ChatColor.AQUA + "Train Information:");
-        tag = tag.substring(tag.indexOf('_') + 1);      //delete the first part of the string
-        while(tag.indexOf('_') != -1){
-            sender.sendMessage(ChatColor.AQUA + tag.substring(0, tag.indexOf(';')));
-            tag = tag.substring(tag.indexOf('_') + 1);  //delete the next part of the string that we just printed
+        tag = ChatColor.translateAlternateColorCodes('&', tag);
+        sender.sendMessage(ChatColor.AQUA.toString() + ChatColor.UNDERLINE + "Train Information:");
+        StringTokenizer tokenizer = new StringTokenizer(tag, "|");
+        tokenizer.nextToken();
+        while(tokenizer.hasMoreTokens()){
+            sender.sendMessage(tokenizer.nextToken());
         }
-        sender.sendMessage(ChatColor.AQUA + tag);        //send the last part of the string
     }
 
     static class RequestHandler implements HttpHandler {

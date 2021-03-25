@@ -4,6 +4,10 @@
 
 #ticks needed to destroy inactive trains. Set it to 0 to turn this feature off.
 destroy-trains: 0
+#don't destroy trains with this tag:
+dont-destroy-tag: dontdestroy
+
+seconds-to-display-on-board: 20
 
 departure-boards:
   test1|3:
