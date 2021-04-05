@@ -6,8 +6,12 @@
 destroy-trains: 0
 #don't destroy trains with this tag:
 dont-destroy-tag: dontdestroy
-
+#seconds from which "now" is displayed on departure boards
 seconds-to-display-on-board: 20
+#whether to blink platform number for trains departing "now"
+blink-platform-number: false
+#whether to blink "now" symbol when it's displayed on a sign
+blink-now: true
 
 departure-boards:
   test1|3:

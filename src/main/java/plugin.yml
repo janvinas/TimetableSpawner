@@ -4,7 +4,7 @@ author: janitus1234
 description: TimetableSpawner plugin for traincarts
 main: io.github.janvinas.timetablespawner.TimetableSpawner
 api-version: 1.13
-depend: [Train_Carts]
+depend: [Train_Carts, BKCommonLib]
 commands:
   timetablespawner:
     description: TimetableSpawner main command

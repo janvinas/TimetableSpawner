@@ -1,6 +1,10 @@
 package io.github.janvinas.timetablespawner;
 
 import com.bergerkiller.bukkit.common.BlockLocation;
+import com.bergerkiller.bukkit.common.map.MapDisplay;
+import com.bergerkiller.bukkit.common.utils.ItemUtil;
+import com.bergerkiller.bukkit.sl.API.TickMode;
+import com.bergerkiller.bukkit.sl.API.Variable;
 import com.bergerkiller.bukkit.sl.API.Variables;
 import com.bergerkiller.bukkit.tc.controller.MinecartGroup;
 import com.bergerkiller.bukkit.tc.controller.MinecartGroupStore;
@@ -9,13 +13,13 @@ import com.bergerkiller.bukkit.tc.signactions.spawner.SpawnSign;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import net.intelie.omnicron.Cron;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -30,8 +34,12 @@ public class TimetableSpawner extends JavaPlugin {
 
     HashMap<String, Block> trainList = new HashMap<>();
     HashMap<String, List<String>> departureBoards = new HashMap<>();
+    static HashMap<String, List<String>> displayDepartureBoards = new HashMap<>();
+    static int secondsToDisplayOnBoard = 20;
+    boolean blinkPlatformNumber = false;
+    boolean blinkNow = false;
+
     int trainDestroyDelay;
-    int secondsToDisplayOnBoard = 20;
     String dontDestroyTag;
 
     @Override
@@ -41,9 +49,14 @@ public class TimetableSpawner extends JavaPlugin {
         trainDestroyDelay = getConfig().getInt("destroy-trains");
         secondsToDisplayOnBoard = getConfig().getInt("seconds-to-display-on-board");
         dontDestroyTag = getConfig().getString("dont-destroy-tag");
-        
+        blinkPlatformNumber = getConfig().getBoolean("blink-platform-number");
+        blinkNow = getConfig().getBoolean("blink-now");
+
         for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
             departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
+        }
+        for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("display-departure-boards")).getKeys(false)){
+            displayDepartureBoards.put(board, getConfig().getStringList("display-departure-boards." + board));
         }
 
         try {
@@ -89,49 +102,42 @@ public class TimetableSpawner extends JavaPlugin {
                 int boardLength = Integer.parseInt(boardNameTokenizer.nextToken());
 
                 departureBoardTrains.clear();
-                for(String trainLine : departureBoards.get(boardName)){
-                    StringTokenizer lineTokenizer = new StringTokenizer(trainLine, "|");
-                    TrainInformation trainInformation = new TrainInformation();
-
-                    trainInformation.name = lineTokenizer.nextToken();
-                    trainInformation.time = lineTokenizer.nextToken();
-                    if(lineTokenizer.hasMoreTokens()) trainInformation.destination = lineTokenizer.nextToken();
-                    if(lineTokenizer.hasMoreTokens()) trainInformation.platform = lineTokenizer.nextToken();
-                    if(lineTokenizer.hasMoreTokens()) trainInformation.information = lineTokenizer.nextToken();
-                    Cron cron = new Cron(trainInformation.time);
-                    LocalDateTime input = now;
-
-                    //put enough trains of every train line so the board will never be empty
-                    for (int i = 0; i < boardLength; i++) {
-                        input = cron.next(input);
-                        departureBoardTrains.put(input, trainInformation);
-                    }
-                }
+                departureBoardTrains = BoardUtils.fillDepartureBoard(now, departureBoards.get(boardName), boardLength, true);
 
                 //save board variables
-                int j = 0;
+                int i = 0;
                 for(LocalDateTime departureTime : departureBoardTrains.keySet()){
-                    if(j < boardLength){
-                        //format is: "board-0N" (train name)
-                        Duration untilDeparture = Duration.between(now, departureTime);
-                        if(untilDeparture.minusSeconds(secondsToDisplayOnBoard).isNegative()){
-                            Variables.get(parsedBoardName + "-" + j + "T").set("now");
-                        }else if(untilDeparture.minusMinutes(5).isNegative()){
-                            Variables.get(parsedBoardName + "-" + j + "T").set(
-                                    departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " (" +
-                                            (int) untilDeparture.getSeconds() / 60 + "min)");
-                        }else{
-                            Variables.get(parsedBoardName + "-" + j + "T").set(departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
+                    //format is: "<boardName>-<lineNumber><variableType>"
+                    Duration untilDeparture = Duration.between(now, departureTime);
+                    if(untilDeparture.minusSeconds(secondsToDisplayOnBoard).isNegative()){
+                        Variables.get(parsedBoardName + "-" + i + "T").set("now");
+                        if(blinkNow){
+                            Variable var = Variables.get(parsedBoardName + "-" + i + "T");
+                            var.getTicker().setMode(TickMode.BLINK);
+                            var.getTicker().setInterval(10);
                         }
-                        Variables.get(parsedBoardName + "-" + j + "N").set(departureBoardTrains.get(departureTime).name);
-                        String destination = departureBoardTrains.get(departureTime).destination;
-                        if(!destination.equals("_")) Variables.get(parsedBoardName + "-" + j + "D").set(destination);
-                        String platform = departureBoardTrains.get(departureTime).platform;
-                        if(!platform.equals("_")) Variables.get(parsedBoardName + "-" + j + "P").set(platform);
-                        String information = departureBoardTrains.get(departureTime).information;
-                        if(!platform.equals("_")) Variables.get(parsedBoardName + "-" + j + "I").set(information);
+                        if(blinkPlatformNumber){
+                            Variable var = Variables.get(parsedBoardName + "-" + i + "P");
+                            var.getTicker().setMode(TickMode.BLINK);
+                            var.getTicker().setInterval(500);
+                        }
+                    }else if(untilDeparture.minusMinutes(5).isNegative()){
+                        Variables.get(parsedBoardName + "-" + i + "T").set(
+                                departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " (" +
+                                        (int) untilDeparture.getSeconds() / 60 + "min)");
+                        Variables.get(parsedBoardName + "-" + i + "T").getTicker().setMode(TickMode.NONE);
+                        Variables.get(parsedBoardName + "-" + i + "P").getTicker().setMode(TickMode.NONE);
+                    }else{
+                        Variables.get(parsedBoardName + "-" + i + "T").set(departureTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
                     }
-                    j++;
+                    Variables.get(parsedBoardName + "-" + i + "N").set(departureBoardTrains.get(departureTime).name);
+                    String destination = departureBoardTrains.get(departureTime).destination;
+                    if(!destination.equals("_")) Variables.get(parsedBoardName + "-" + i + "D").set(destination);
+                    String platform = departureBoardTrains.get(departureTime).platform;
+                    if(!platform.equals("_")) Variables.get(parsedBoardName + "-" + i + "P").set(platform);
+                    String information = departureBoardTrains.get(departureTime).information;
+                    if(!platform.equals("_")) Variables.get(parsedBoardName + "-" + i + "I").set(information);
+                    i++;
                 }
             }
         }, 0, 100);
@@ -173,11 +179,22 @@ public class TimetableSpawner extends JavaPlugin {
                 return true;
             }else if(args.length == 1  && args[0].equalsIgnoreCase("reload")){
                 reloadConfig();
+                blinkPlatformNumber = getConfig().getBoolean("blink-platform-number");
+                blinkNow = getConfig().getBoolean("blink-now");
                 trainDestroyDelay = getConfig().getInt("destroy-trains");
                 dontDestroyTag = getConfig().getString("dont-destroy-tag");
                 for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("departure-boards")).getKeys(false)){
                     departureBoards.put(board, getConfig().getStringList("departure-boards." + board));
                 }
+                for(String board : Objects.requireNonNull(getConfig().getConfigurationSection("display-departure-boards")).getKeys(false)){
+                    displayDepartureBoards.put(board, getConfig().getStringList("display-departure-boards." + board));
+                }
+                return true;
+            }else if(args.length == 3 && args[0].equalsIgnoreCase("createdisplay")){
+                ItemStack display = MapDisplay.createMapItem(MapDisplays.DepartureBoard1.class);
+                ItemUtil.getMetaTag(display).putValue("id", args[1]);
+                ItemUtil.getMetaTag(display).putValue("name", args[2]);
+                ((Player) sender).getInventory().addItem(display);
                 return true;
             }
         }
@@ -220,6 +237,5 @@ public class TimetableSpawner extends JavaPlugin {
         trains = trains.concat("}");
         return trains;
     }
-
 }
 
